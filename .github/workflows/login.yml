@@ -1,18 +1,45 @@
 name: Majsoul-Login
 on:
   workflow_dispatch:
-  schedule: #5:13
-   - cron: '13 21 * * *'
+  schedule: # 每天 21:13 UTC，即北京时间次日 05:13
+    - cron: '13 21 * * *'
+
+# 保活步骤需要提交内容（contents: write）与自动重新启用 workflow（actions: write）
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: majsoul-login
+  cancel-in-progress: false
+
 jobs:
   login:
     name: Majsoul-Login
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install Selenium
         run: pip install selenium==4.17.2
 
       - name: Majsoul login
+        id: login
+        # 登录失败不要中断后续保活步骤
+        continue-on-error: true
         run: python login.py ${{ secrets.EMAIL }} ${{ secrets.PASSWD }}
+
+      # 见 .github/scripts/keepalive.sh：
+      # 公开仓库 60 天无活动时 GitHub 会自动停用 schedule 工作流，
+      # 这里定期提交一次并把可能已被停用的 workflow 重新启用。
+      # 可选：配置 secrets.KEEPALIVE_TOKEN（PAT，workflow 权限），否则回退到 GITHUB_TOKEN。
+      - name: Keep repository active
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.KEEPALIVE_TOKEN || secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/keepalive.sh
+
+      - name: Fail if login failed
+        if: steps.login.outcome == 'failure'
+        run: exit 1

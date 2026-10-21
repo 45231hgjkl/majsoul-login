@@ -24,3 +24,21 @@
 3. 先在Actions页面将GitHub Action启用，再选择对应的workflow，将scheduled workflow启用
    ![enable-schedule-workflow](https://user-images.githubusercontent.com/90035785/224888848-be15ba52-1892-4a2b-9cef-b321b9a25165.jpg)
 4. Enjoy it!
+
+## 关于「60 天没变动导致计划任务自动关闭」
+
+GitHub 有一条规则：**公开仓库连续 60 天没有任何活动（commit/push），所有 `schedule` 触发的 workflow 会被自动停用**，需要去 Actions 页面手动重新启用。这样每日自动登录会在无感知的情况下失效。
+
+本项目已内置保活机制（`.github/scripts/keepalive.sh`，在登录 workflow 的末尾以 `if: always()` 执行）：
+
+- 距离上次保活提交超过 **25 天**时，自动更新 `.github/keepalive` 并推送一个带 `[skip ci]` 的提交，重置 60 天计时器（不用每天提交，不会刷爆 commit 历史）。
+- 顺带检查 `login.yml` 是否已被停用，如果是则调用 GitHub API 自动重新启用。
+- 登录步骤失败不会阻断保活步骤；最后仍会以失败状态结束，方便你收到通知。
+
+所需权限已在 workflow 里声明（`contents: write`、`actions: write`），默认使用 `GITHUB_TOKEN`，开箱即用。
+
+> 若你的仓库 Fork 后默认 workflow 权限被限制为只读（Settings → Actions → General → Workflow permissions 里选成 *Read repository contents permission*），请改成 *Read and write permissions*。
+>
+> 如果想用个人令牌更保险：新建一个带 `repo` + `workflow` 权限的 PAT，命名为 `KEEPALIVE_TOKEN` 存进 Secrets 即可，workflow 会自动优先使用它。
+
+手动应急：如果已经超过 60 天且计划任务被停用，在 Actions 页面手动 `Run workflow` 跑一次 `Majsoul-Login`，保活步骤会把它重新启用。
